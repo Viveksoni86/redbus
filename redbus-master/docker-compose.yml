@@ -1,0 +1,16 @@
+version: "3"
+
+services:
+  backend:
+    build: ./back-end-redbus
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./back-end-redbus/config.env
+
+  frontend:
+    build: ./front-end-redbus
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
