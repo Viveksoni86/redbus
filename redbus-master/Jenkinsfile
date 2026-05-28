@@ -7,75 +7,68 @@ pipeline {
 
         ECR_BACKEND = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/redbus-backend"
         ECR_FRONTEND = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/redbus-frontend"
+
+        EC2_HOST = "13.207.1.215"
+        EC2_USER = "ubuntu"
     }
 
     stages {
 
-        stage('Build Backend Image') {
+        stage('Checkout') {
             steps {
-                sh 'docker build -t redbus-backend ./redbus-master/back-end-redbus'
+                git branch: 'main', url: 'YOUR_GITHUB_REPO_URL'
             }
         }
 
-        stage('Build Frontend Image') {
-            steps {
-                sh 'docker build -t redbus-frontend ./redbus-master/front-end-redbus'
-            }
-        }
-
-        stage('Login to AWS ECR') {
-            steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-cred'
-                ]]) {
-
-                    sh '''
-                    aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
-                    '''
-                }
-            }
-        }
-
-        stage('Tag Images') {
+        stage('Build Docker Images') {
             steps {
                 sh '''
-                docker tag redbus-backend:latest $ECR_BACKEND:latest
-                docker tag redbus-frontend:latest $ECR_FRONTEND:latest
+                docker build -t backend ./backend
+                docker build -t frontend ./frontend
                 '''
             }
         }
 
-        stage('Push Images') {
+        stage('Login to ECR') {
             steps {
                 sh '''
+                aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                '''
+            }
+        }
+
+        stage('Tag & Push Images') {
+            steps {
+                sh '''
+                docker tag backend:latest $ECR_BACKEND:latest
+                docker tag frontend:latest $ECR_FRONTEND:latest
+
                 docker push $ECR_BACKEND:latest
                 docker push $ECR_FRONTEND:latest
                 '''
             }
         }
-    }
-}
 
-stage('Deploy to EC2') {
-    steps {
-        sh '''
-        ssh -o StrictHostKeyChecking=no ubuntu@<EC2_PUBLIC_IP> "
-        
-        aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
-        
-        docker pull 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend:latest
-        docker pull 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend:latest
-        
-        docker stop backend || true
-        docker rm backend || true
-        docker stop frontend || true
-        docker rm frontend || true
-        
-        docker run -d -p 5000:5000 --name backend redbus-backend:latest
-        docker run -d -p 3000:3000 --name frontend redbus-frontend:latest
-        
-        "
-        '''
+        stage('Deploy to EC2') {
+            steps {
+                sh '''
+                ssh -o StrictHostKeyChecking=no ubuntu@$EC2_HOST "
+                    aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
+
+                    docker pull $ECR_BACKEND:latest
+                    docker pull $ECR_FRONTEND:latest
+
+                    docker stop backend || true
+                    docker stop frontend || true
+
+                    docker rm backend || true
+                    docker rm frontend || true
+
+                    docker run -d --name backend -p 5000:5000 $ECR_BACKEND:latest
+                    docker run -d --name frontend -p 3000:3000 $ECR_FRONTEND:latest
+                "
+                '''
+            }
+        }
     }
 }
