@@ -4,10 +4,12 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install --legacy-peer-deps
+RUN npm cache clean --force
+
+RUN npm install --legacy-peer-deps --no-cache
 
 COPY . .
 
-EXPOSE 3001
+EXPOSE 3000
 
-CMD ["npm","start"]
+CMD ["npm", "start"]
