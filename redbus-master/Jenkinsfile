@@ -29,19 +29,19 @@ pipeline {
             }
         }
 
-        stage('Login to AWS ECR') {
-            steps {
-                withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding',
-                     credentialsId: 'aws-credentials']
-                ]) {
-                    sh '''
-                    aws ecr get-login-password --region ap-south-1 | \
-                    docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
-                    '''
-                }
-            }
+     stage('Login to AWS ECR') {
+    steps {
+        withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+             credentialsId: 'aws-credentials']
+        ]) {
+            sh '''
+            aws ecr get-login-password --region ap-south-1 | \
+            docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
+            '''
         }
+    }
+}
 
         stage('Tag Images') {
             steps {
