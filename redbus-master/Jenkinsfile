@@ -5,48 +5,58 @@ pipeline {
         AWS_ACCOUNT_ID = "740349584703"
         AWS_REGION     = "ap-south-1"
 
-        ECR_BACKEND  = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/redbus-backend"
-        ECR_FRONTEND = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/redbus-frontend"
+        ECR_BACKEND  = "740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend"
+        ECR_FRONTEND = "740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend"
 
         EC2_HOST = "13.207.1.215"
-        EC2_USER = "ubuntu"
     }
 
     stages {
 
-        stage('Checkout Code') {
-            steps {
-                // IMPORTANT: Jenkins already checks out code automatically
-                echo "Code already checked out by Jenkins SCM"
-            }
-        }
-
-       stage('Build Docker Images') {
-    steps {
-        sh '''
-        docker build -t backend ./back-end-redbus
-        docker build -t frontend ./front-end-redbus
-        '''
-    }
-}
-
-        stage('Login to AWS ECR') {
+        stage('Build Backend Image') {
             steps {
                 sh '''
-                aws ecr get-login-password --region $AWS_REGION | \
-                docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                docker build -t redbus-backend ./redbus-master/back-end-redbus
                 '''
             }
         }
 
-        stage('Tag and Push Images') {
+        stage('Build Frontend Image') {
             steps {
                 sh '''
-                docker tag backend:latest $ECR_BACKEND:latest
-                docker tag frontend:latest $ECR_FRONTEND:latest
+                docker build -t redbus-frontend ./redbus-master/front-end-redbus
+                '''
+            }
+        }
 
-                docker push $ECR_BACKEND:latest
-                docker push $ECR_FRONTEND:latest
+        stage('Login to AWS ECR') {
+            steps {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-credentials']
+                ]) {
+                    sh '''
+                    aws ecr get-login-password --region ap-south-1 | \
+                    docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
+                    '''
+                }
+            }
+        }
+
+        stage('Tag Images') {
+            steps {
+                sh '''
+                docker tag redbus-backend:latest 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend:latest
+                docker tag redbus-frontend:latest 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend:latest
+                '''
+            }
+        }
+
+        stage('Push Images') {
+            steps {
+                sh '''
+                docker push 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend:latest
+                docker push 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend:latest
                 '''
             }
         }
@@ -56,20 +66,21 @@ pipeline {
                 sh '''
                 ssh -o StrictHostKeyChecking=no ubuntu@$EC2_HOST "
 
-                    aws ecr get-login-password --region ap-south-1 | \
-                    docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
+                aws ecr get-login-password --region ap-south-1 | \
+                docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
 
-                    docker pull $ECR_BACKEND:latest
-                    docker pull $ECR_FRONTEND:latest
+                docker pull 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend:latest
+                docker pull 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend:latest
 
-                    docker stop backend || true
-                    docker rm backend || true
+                docker stop backend || true
+                docker rm backend || true
 
-                    docker stop frontend || true
-                    docker rm frontend || true
+                docker stop frontend || true
+                docker rm frontend || true
 
-                    docker run -d --name backend -p 5000:5000 $ECR_BACKEND:latest
-                    docker run -d --name frontend -p 3000:3000 $ECR_FRONTEND:latest
+                docker run -d --name backend -p 5000:5000 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend:latest
+                docker run -d --name frontend -p 3000:3000 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend:latest
+
                 "
                 '''
             }
