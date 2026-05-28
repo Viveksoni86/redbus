@@ -15,10 +15,11 @@ pipeline {
     stages {
 
         stage('Checkout') {
-            steps {
-                git branch: 'main', url: 'YOUR_GITHUB_REPO_URL'
-            }
-        }
+    steps {
+        git branch: 'main', url: 'YOUR_GITHUB_REPO_URL'
+    }
+}
+       
 
         stage('Build Docker Images') {
             steps {
