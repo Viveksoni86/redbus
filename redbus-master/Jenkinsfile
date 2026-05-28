@@ -1,18 +1,60 @@
+```groovy
 pipeline {
     agent any
 
+    environment {
+        AWS_ACCOUNT_ID = "740349584703"
+        AWS_REGION = "ap-south-1"
+
+        ECR_BACKEND = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/redbus-backend"
+        ECR_FRONTEND = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/redbus-frontend"
+    }
+
     stages {
-        stage('Build') {
+
+        stage('Build Backend Image') {
             steps {
-                sh 'docker-compose build'
+                sh 'docker build -t redbus-backend ./redbus-master/back-end-redbus'
             }
         }
 
-        stage('Deploy') {
+        stage('Build Frontend Image') {
             steps {
-                sh 'docker-compose down'
-                sh 'docker-compose up -d'
+                sh 'docker build -t redbus-frontend ./redbus-master/front-end-redbus'
+            }
+        }
+
+        stage('Login to AWS ECR') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-credentials'
+                ]]) {
+
+                    sh '''
+                    aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
+                    '''
+                }
+            }
+        }
+
+        stage('Tag Images') {
+            steps {
+                sh '''
+                docker tag redbus-backend:latest $ECR_BACKEND:latest
+                docker tag redbus-frontend:latest $ECR_FRONTEND:latest
+                '''
+            }
+        }
+
+        stage('Push Images') {
+            steps {
+                sh '''
+                docker push $ECR_BACKEND:latest
+                docker push $ECR_FRONTEND:latest
+                '''
             }
         }
     }
 }
+```
