@@ -1,48 +1,28 @@
 pipeline {
     agent any
 
-    environment {
-        AWS_ACCOUNT_ID = "740349584703"
-        AWS_REGION     = "ap-south-1"
-
-        ECR_BACKEND  = "740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend"
-        ECR_FRONTEND = "740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend"
-
-        EC2_HOST = "13.207.1.215"
-    }
-
     stages {
 
         stage('Build Backend Image') {
             steps {
-                sh '''
-                docker build -t redbus-backend ./redbus-master/back-end-redbus
-                '''
+                sh 'docker build -t redbus-backend ./redbus-master/back-end-redbus'
             }
         }
 
         stage('Build Frontend Image') {
             steps {
-                sh '''
-                docker build -t redbus-frontend ./redbus-master/front-end-redbus
-                '''
+                sh 'docker build -t redbus-frontend ./redbus-master/front-end-redbus'
             }
         }
 
-     stage('Login to AWS ECR') {
-    steps {
-            sh '''
-        aws ecr get-login-password --region ap-south-1 | \
-        docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
-        '''
-        {
-            sh '''
-            aws ecr get-login-password --region ap-south-1 | \
-            docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
-            '''
+        stage('Login to AWS ECR') {
+            steps {
+                sh '''
+                aws ecr get-login-password --region ap-south-1 | \
+                docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
+                '''
+            }
         }
-    }
-}
 
         stage('Tag Images') {
             steps {
@@ -65,7 +45,7 @@ pipeline {
         stage('Deploy to EC2') {
             steps {
                 sh '''
-                ssh -o StrictHostKeyChecking=no ubuntu@$EC2_HOST "
+                ssh -o StrictHostKeyChecking=no ubuntu@13.207.1.215 "
 
                 aws ecr get-login-password --region ap-south-1 | \
                 docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
