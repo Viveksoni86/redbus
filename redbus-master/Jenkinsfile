@@ -21,14 +21,14 @@ pipeline {
             }
         }
 
-        stage('Build Docker Images') {
-            steps {
-                sh '''
-                docker build -t backend ./backend
-                docker build -t frontend ./frontend
-                '''
-            }
-        }
+       stage('Build Docker Images') {
+    steps {
+        sh '''
+        docker build -t backend ./back-end-redbus
+        docker build -t frontend ./front-end-redbus
+        '''
+    }
+}
 
         stage('Login to AWS ECR') {
             steps {
