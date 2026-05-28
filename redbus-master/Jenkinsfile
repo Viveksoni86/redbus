@@ -3,9 +3,9 @@ pipeline {
 
     environment {
         AWS_ACCOUNT_ID = "740349584703"
-        AWS_REGION = "ap-south-1"
+        AWS_REGION     = "ap-south-1"
 
-        ECR_BACKEND = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/redbus-backend"
+        ECR_BACKEND  = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/redbus-backend"
         ECR_FRONTEND = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/redbus-frontend"
 
         EC2_HOST = "13.207.1.215"
@@ -14,12 +14,12 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
-    steps {
-        git branch: 'main', url: 'YOUR_GITHUB_REPO_URL'
-    }
-}
-       
+        stage('Checkout Code') {
+            steps {
+                // IMPORTANT: Jenkins already checks out code automatically
+                echo "Code already checked out by Jenkins SCM"
+            }
+        }
 
         stage('Build Docker Images') {
             steps {
@@ -30,15 +30,16 @@ pipeline {
             }
         }
 
-        stage('Login to ECR') {
+        stage('Login to AWS ECR') {
             steps {
                 sh '''
-                aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                aws ecr get-login-password --region $AWS_REGION | \
+                docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
                 '''
             }
         }
 
-        stage('Tag & Push Images') {
+        stage('Tag and Push Images') {
             steps {
                 sh '''
                 docker tag backend:latest $ECR_BACKEND:latest
@@ -54,15 +55,17 @@ pipeline {
             steps {
                 sh '''
                 ssh -o StrictHostKeyChecking=no ubuntu@$EC2_HOST "
-                    aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
+
+                    aws ecr get-login-password --region ap-south-1 | \
+                    docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
 
                     docker pull $ECR_BACKEND:latest
                     docker pull $ECR_FRONTEND:latest
 
                     docker stop backend || true
-                    docker stop frontend || true
-
                     docker rm backend || true
+
+                    docker stop frontend || true
                     docker rm frontend || true
 
                     docker run -d --name backend -p 5000:5000 $ECR_BACKEND:latest
