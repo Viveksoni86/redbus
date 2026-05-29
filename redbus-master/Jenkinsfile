@@ -42,29 +42,7 @@ pipeline {
             }
         }
 
-        stage('Deploy to EC2') {
-            steps {
-                sh '''
-                ssh -o StrictHostKeyChecking=no ubuntu@13.207.1.215 "
-
-                aws ecr get-login-password --region ap-south-1 | \
-                docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
-
-                docker pull 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend:latest
-                docker pull 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend:latest
-
-                docker stop backend || true
-                docker rm backend || true
-
-                docker stop frontend || true
-                docker rm frontend || true
-
-                docker run -d --name backend -p 5000:5000 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend:latest
-                docker run -d --name frontend -p 3000:3000 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend:latest
-
-                "
-                '''
-            }
-        }
+     
+        
     }
 }
