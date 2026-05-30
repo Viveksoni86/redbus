@@ -63,8 +63,9 @@ const connect = () => {
     console.log('MongoDB connection established.');
   });
 
+  const dbUri = process.env.DATABASE || "mongodb+srv://redbus_db_user_1:umJkhSujb8dZoc2a@redbuscnstructweek.bujg6.mongodb.net/redbus?retryWrites=true&w=majority";
   return mongoose.connect(
-"mongodb+srv://redbus_db_user_1:umJkhSujb8dZoc2a@redbuscnstructweek.bujg6.mongodb.net/redbus?retryWrites=true&w=majority",
+    dbUri,
     {
       useCreateIndex: true,
       useNewUrlParser: true,
