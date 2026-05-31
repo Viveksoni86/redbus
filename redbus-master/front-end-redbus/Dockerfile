@@ -11,6 +11,11 @@ COPY . .
 # 🔥 FIX: Increase Node memory (VERY IMPORTANT)
 ENV NODE_OPTIONS=--max_old_space_size=4096
 
+
+ARG REACT_APP_BACKEND_URL
+ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
+
+
 RUN npm run build
 
 # Stage 2: Serve with Nginx
