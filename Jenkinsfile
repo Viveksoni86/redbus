@@ -65,6 +65,72 @@ pipeline {
                         echo "Waiting for LoadBalancer..."
                         sleep 10
                     done
+pipeline {
+    agent any
+
+    environment {
+        AWS_ACCOUNT_ID = "740349584703"
+        AWS_REGION     = "ap-south-1"
+
+        ECR_BACKEND_REPOSITORY  = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/redbus-backend"
+        ECR_FRONTEND_REPOSITORY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/redbus-frontend"
+
+        CLUSTER_NAME = "redbus-eks-cluster"
+    }
+
+    stages {
+
+        stage('Clean Workspace') {
+            steps {
+                deleteDir()
+            }
+        }
+
+        stage('Initialize & Authenticate') {
+            steps {
+                script {
+                    sh 'aws --version'
+                    sh 'docker --version'
+                    sh 'kubectl version --client'
+
+                    sh """
+                    aws eks update-kubeconfig \
+                    --region ${AWS_REGION} \
+                    --name ${CLUSTER_NAME}
+                    """
+
+                    sh """
+                    aws ecr get-login-password --region ${AWS_REGION} | \
+                    docker login --username AWS \
+                    --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    """
+                }
+            }
+        }
+
+        stage('Deploy Secrets & Backend Service') {
+            steps {
+                script {
+
+                    sh 'kubectl apply -f kubernetes/secrets.yaml'
+                    sh 'kubectl apply -f kubernetes/backend-service.yaml'
+
+                    sh '''
+                    BACKEND_URL=""
+
+                    for i in {1..30}; do
+                        BACKEND_URL=$(kubectl get svc redbus-backend \
+                        -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" 2>/dev/null || true)
+
+                        if [ ! -z "$BACKEND_URL" ]; then
+                            echo "http://$BACKEND_URL:5000" > backend_url.txt
+                            echo "Backend Ready: $BACKEND_URL"
+                            break
+                        fi
+
+                        echo "Waiting for LoadBalancer..."
+                        sleep 10
+                    done
 
                     if [ ! -f backend_url.txt ]; then
                         echo "Backend URL not generated"
@@ -113,8 +179,8 @@ pipeline {
                 script {
 
                     sh """
-                    sed -i 's|\\\${ECR_BACKEND_REPOSITORY}|${ECR_BACKEND_REPOSITORY}|g' kubernetes/backend-deployment.yaml
-                    sed -i 's|\\\${ECR_FRONTEND_REPOSITORY}|${ECR_FRONTEND_REPOSITORY}|g' kubernetes/frontend-deployment.yaml
+                    sed -i 's|\\${ECR_BACKEND_REPOSITORY}|${ECR_BACKEND_REPOSITORY}|g' kubernetes/backend-deployment.yaml
+                    sed -i 's|\\${ECR_FRONTEND_REPOSITORY}|${ECR_FRONTEND_REPOSITORY}|g' kubernetes/frontend-deployment.yaml
                     """
 
                     sh 'kubectl apply -f kubernetes/backend-deployment.yaml'
@@ -150,56 +216,3 @@ pipeline {
         }
     }
 }
-=======
-    stages {
-            
-        stage('Clean Workspace') {
-    steps {
-        deleteDir()
-    }
-}
-
-        stage('Build Backend Image') {
-            steps {
-                sh 'docker build -t redbus-backend ./redbus-master/back-end-redbus'
-            }
-        }
-
-        stage('Build Frontend Image') {
-            steps {
-                sh 'docker build -t redbus-frontend ./redbus-master/front-end-redbus'
-            }
-        }
-
-        stage('Login to AWS ECR') {
-            steps {
-                sh '''
-                aws ecr get-login-password --region ap-south-1 | \
-                docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
-                '''
-            }
-        }
-
-        stage('Tag Images') {
-            steps {
-                sh '''
-                docker tag redbus-backend:latest 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend:latest
-                docker tag redbus-frontend:latest 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend:latest
-                '''
-            }
-        }
-
-        stage('Push Images') {
-            steps {
-                sh '''
-                docker push 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend:latest
-                docker push 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend:latest
-                '''
-            }
-        }
-
-     
-        
-    }
-}
->>>>>>> deploy/jenkins-eks
