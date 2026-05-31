@@ -22,7 +22,6 @@ pipeline {
         stage('Initialize & Authenticate') {
             steps {
                 script {
-
                     sh 'aws --version'
                     sh 'docker --version'
                     sh 'kubectl version --client'
@@ -52,20 +51,22 @@ pipeline {
                     sh '''
                     BACKEND_URL=""
 
-                    for i in {1..25}; do
+                    for i in {1..30}; do
                         BACKEND_URL=$(kubectl get svc redbus-backend \
                         -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" 2>/dev/null || true)
 
                         if [ ! -z "$BACKEND_URL" ]; then
-                            echo $BACKEND_URL > backend_url.txt
+                            echo "http://$BACKEND_URL:5000" > backend_url.txt
+                            echo "Backend Ready: $BACKEND_URL"
                             break
                         fi
 
+                        echo "Waiting for LoadBalancer..."
                         sleep 10
                     done
 
-                    if [ -z "$BACKEND_URL" ]; then
-                        echo "LoadBalancer failed"
+                    if [ ! -f backend_url.txt ]; then
+                        echo "Backend URL not generated"
                         exit 1
                     fi
                     '''
@@ -80,7 +81,7 @@ pipeline {
                     sh """
                     docker build --no-cache \
                     -t ${ECR_BACKEND_REPOSITORY}:latest \
-                    ./front-end-redbus/../back-end-redbus
+                    ./back-end-redbus
                     """
 
                     sh "docker push ${ECR_BACKEND_REPOSITORY}:latest"
@@ -119,8 +120,8 @@ pipeline {
                     sh 'kubectl apply -f kubernetes/frontend-deployment.yaml'
                     sh 'kubectl apply -f kubernetes/frontend-service.yaml'
 
-                    sh 'kubectl rollout status deployment/redbus-backend --timeout=120s'
-                    sh 'kubectl rollout status deployment/redbus-frontend --timeout=120s'
+                    sh 'kubectl rollout status deployment/redbus-backend --timeout=180s'
+                    sh 'kubectl rollout status deployment/redbus-frontend --timeout=180s'
 
                     sh 'kubectl get svc'
                 }
@@ -138,7 +139,7 @@ pipeline {
 
             echo "====================================="
             echo "APP LIVE:"
-            echo "http://${FRONTEND_DNS}"
+            echo "http://$FRONTEND_DNS"
             echo "====================================="
             '''
         }
