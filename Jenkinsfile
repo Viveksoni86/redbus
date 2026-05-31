@@ -1,0 +1,54 @@
+pipeline {
+    agent any
+
+    stages {
+            
+        stage('Clean Workspace') {
+    steps {
+        deleteDir()
+    }
+}
+
+        stage('Build Backend Image') {
+            steps {
+                sh 'docker build -t redbus-backend ./redbus-master/back-end-redbus'
+            }
+        }
+
+        stage('Build Frontend Image') {
+            steps {
+                sh 'docker build -t redbus-frontend ./redbus-master/front-end-redbus'
+            }
+        }
+
+        stage('Login to AWS ECR') {
+            steps {
+                sh '''
+                aws ecr get-login-password --region ap-south-1 | \
+                docker login --username AWS --password-stdin 740349584703.dkr.ecr.ap-south-1.amazonaws.com
+                '''
+            }
+        }
+
+        stage('Tag Images') {
+            steps {
+                sh '''
+                docker tag redbus-backend:latest 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend:latest
+                docker tag redbus-frontend:latest 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend:latest
+                '''
+            }
+        }
+
+        stage('Push Images') {
+            steps {
+                sh '''
+                docker push 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend:latest
+                docker push 740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend:latest
+                '''
+            }
+        }
+
+     
+        
+    }
+}
