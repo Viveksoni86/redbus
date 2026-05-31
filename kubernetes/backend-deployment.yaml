@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redbus-backend
+  namespace: default
+  labels:
+    app: redbus-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: redbus-backend
+  template:
+    metadata:
+      labels:
+        app: redbus-backend
+    spec:
+      containers:
+      - name: backend
+        # Jenkins will dynamically replace this placeholder with the exact ECR repository URL and tag
+        image: ${ECR_BACKEND_REPOSITORY}:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5000
+        env:
+        - name: DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: redbus-secrets
+              key: DATABASE
+        - name: STRIPE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: redbus-secrets
+              key: STRIPE_SECRET_KEY
+        - name: PORT
+          value: "5000"
+        - name: HOST
+          value: "0.0.0.0"
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
