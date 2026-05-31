@@ -1,4 +1,5 @@
-FROM node:16-alpine
+# Stage 1: Build React App
+FROM node:16-alpine AS builder
 
 WORKDIR /app
 
@@ -7,10 +8,16 @@ RUN npm install --legacy-peer-deps
 
 COPY . .
 
+# 🔥 FIX: Increase Node memory (VERY IMPORTANT)
 ENV NODE_OPTIONS=--max_old_space_size=4096
 
 RUN npm run build
 
+# Stage 2: Serve with Nginx
 FROM nginx:stable-alpine
 
-COPY --from=0 /app/build /usr/share/nginx/html
+COPY --from=builder /app/build /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
