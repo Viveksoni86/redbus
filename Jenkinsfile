@@ -15,30 +15,34 @@ pipeline {
 
         stage('Initialize & Authenticate') {
             steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-secret-key'
+                ]]) {
+                    script {
 
-                script {
+                        sh 'aws --version'
+                        sh 'docker --version'
+                        sh 'kubectl version --client'
 
-                    sh 'aws --version'
-                    sh 'docker --version'
-                    sh 'kubectl version --client'
+                        echo "Updating kubeconfig for EKS..."
 
-                    echo "Connecting to EKS Cluster..."
+                        sh """
+                        aws eks update-kubeconfig \
+                        --region ${AWS_REGION} \
+                        --name ${CLUSTER_NAME}
+                        """
 
-                    sh """
-                    aws eks update-kubeconfig \
-                    --region ${AWS_REGION} \
-                    --name ${CLUSTER_NAME}
-                    """
+                        echo "Logging into ECR..."
 
-                    echo "Logging into ECR..."
-
-                    sh """
-                    aws ecr get-login-password --region ${AWS_REGION} | \
-                    docker login --username AWS \
-                    --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-                    """
+                        sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | \
+                        docker login --username AWS \
+                        --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                        """
+                    }
                 }
-        }
+            }
         }
 
         stage('Deploy Secrets & Backend Service') {
@@ -46,7 +50,6 @@ pipeline {
                 script {
 
                     sh 'kubectl apply -f kubernetes/secrets.yaml'
-
                     sh 'kubectl apply -f kubernetes/backend-service.yaml'
 
                     echo "Waiting for Backend LoadBalancer..."
@@ -54,9 +57,9 @@ pipeline {
                     sh '''
                     BACKEND_URL=""
 
-                    for i in {1..20}; do
-
-                        BACKEND_URL=$(kubectl get svc redbus-backend -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" || true)
+                    for i in {1..25}; do
+                        BACKEND_URL=$(kubectl get svc redbus-backend \
+                        -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" 2>/dev/null || true)
 
                         if [ ! -z "$BACKEND_URL" ]; then
                             echo "Backend URL Found: http://${BACKEND_URL}:5000"
@@ -68,7 +71,7 @@ pipeline {
                     done
 
                     if [ -z "$BACKEND_URL" ]; then
-                        echo "LoadBalancer creation failed"
+                        echo "ERROR: LoadBalancer creation failed"
                         exit 1
                     fi
 
@@ -81,7 +84,6 @@ pipeline {
         stage('Build & Push Backend') {
             steps {
                 script {
-
                     sh """
                     docker build \
                     -t ${ECR_BACKEND_REPOSITORY}:latest \
@@ -98,7 +100,6 @@ pipeline {
                 script {
 
                     def envFileContent = readFile('frontend.env').trim()
-
                     def backendUrl = envFileContent.split('=')[1]
 
                     echo "Backend URL: ${backendUrl}"
@@ -128,13 +129,10 @@ pipeline {
                     """
 
                     sh 'kubectl apply -f kubernetes/backend-deployment.yaml'
-
                     sh 'kubectl apply -f kubernetes/frontend-deployment.yaml'
-
                     sh 'kubectl apply -f kubernetes/frontend-service.yaml'
 
                     sh 'kubectl rollout status deployment/redbus-backend --timeout=120s'
-
                     sh 'kubectl rollout status deployment/redbus-frontend --timeout=120s'
 
                     sh 'kubectl get svc'
@@ -144,13 +142,12 @@ pipeline {
     }
 
     post {
-
         success {
-
             echo "Deployment Successful"
 
             sh '''
-            FRONTEND_DNS=$(kubectl get svc redbus-frontend -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+            FRONTEND_DNS=$(kubectl get svc redbus-frontend \
+            -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
 
             echo "====================================================="
             echo "Application Live At:"
