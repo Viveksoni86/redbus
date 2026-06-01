@@ -17,11 +17,15 @@ spec:
     spec:
       containers:
       - name: frontend
-        # Jenkins will dynamically replace this placeholder with the exact ECR repository URL and tag
-        image: ${ECR_FRONTEND_REPOSITORY}:latest
+        # Jenkins replaces both placeholders with the exact ECR repo URL and build tag
+        image: ${ECR_FRONTEND_REPOSITORY}:${IMAGE_TAG}
         imagePullPolicy: Always
         ports:
         - containerPort: 80
+        env:
+        # nginx proxies /v1/api to the in-cluster backend service.
+        - name: BACKEND_HOST
+          value: "redbus-backend"
         resources:
           limits:
             cpu: "500m"
