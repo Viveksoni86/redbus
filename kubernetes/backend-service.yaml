@@ -4,7 +4,8 @@ metadata:
   name: redbus-backend
   namespace: default
 spec:
-  type: LoadBalancer
+  # Internal only: the frontend nginx proxies /v1/api to this service.
+  type: ClusterIP
   selector:
     app: redbus-backend
   ports:

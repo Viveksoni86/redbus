@@ -13,9 +13,19 @@ pipeline {
 
     stages {
 
-        stage('Clean Workspace') {
+        stage('Checkout') {
             steps {
-                deleteDir()
+                // Pull the repo for this build. (Do NOT deleteDir() here - that
+                // would wipe the checkout that every later stage depends on.)
+                checkout scm
+                script {
+                    // One unique tag reused by every stage: git sha + build number + timestamp.
+                    env.IMAGE_TAG = sh(
+                        returnStdout: true,
+                        script: 'echo "$(git rev-parse --short HEAD 2>/dev/null || echo no-git)-${BUILD_NUMBER}-$(date +%s)"'
+                    ).trim()
+                    echo "Image tag for this build: ${env.IMAGE_TAG}"
+                }
             }
         }
 
@@ -41,67 +51,21 @@ pipeline {
             }
         }
 
-        stage('Deploy Secrets & Backend Service') {
+        stage('Build & Push Images') {
             steps {
                 script {
+                    // Backend
+                    sh """
+                    docker build --no-cache -t ${ECR_BACKEND_REPOSITORY}:${env.IMAGE_TAG} ./back-end-redbus
+                    docker push ${ECR_BACKEND_REPOSITORY}:${env.IMAGE_TAG}
+                    """
 
-                    sh 'kubectl apply -f kubernetes/secrets.yaml'
-                    sh 'kubectl apply -f kubernetes/backend-service.yaml'
-
-                    sh '''
-                    BACKEND_URL=""
-
-                    for i in {1..30}; do
-                        BACKEND_URL=$(kubectl get svc redbus-backend \
-                        -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" 2>/dev/null || true)
-
-                        if [ ! -z "$BACKEND_URL" ]; then
-                            echo "http://$BACKEND_URL:5000" > backend_url.txt
-                            echo "Backend Ready: $BACKEND_URL"
-                            break
-                        fi
-
-                        echo "Waiting for LoadBalancer..."
-                        sleep 10
-                    done
-
-                    if [ ! -f backend_url.txt ]; then
-                        echo "Backend URL not generated"
-                        exit 1
-                    fi
-                    '''
-                }
-            }
-        }
-
-        stage('Build & Push Backend') {
-            steps {
-                script {
-
-                    sh '''
-                    # Create a unique image tag: short git sha (if present) + build number + timestamp
-                    GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "no-git")
-                    IMAGE_TAG="${GIT_SHA}-${BUILD_NUMBER}-$(date +%s)"
-                    echo $IMAGE_TAG > image_tag.txt
-
-                    docker build --no-cache -t ${ECR_BACKEND_REPOSITORY}:$IMAGE_TAG ./back-end-redbus
-                    docker push ${ECR_BACKEND_REPOSITORY}:$IMAGE_TAG
-                    '''
-                }
-            }
-        }
-
-        stage('Build & Push Frontend') {
-            steps {
-                script {
-
-                    def backendUrl = readFile('backend_url.txt').trim()
-
-                    sh '''
-                    IMAGE_TAG=$(cat image_tag.txt)
-                    docker build --no-cache --build-arg REACT_APP_BACKEND_URL=${backendUrl} -t ${ECR_FRONTEND_REPOSITORY}:$IMAGE_TAG ./front-end-redbus
-                    docker push ${ECR_FRONTEND_REPOSITORY}:$IMAGE_TAG
-                    '''
+                    // Frontend talks to the backend through nginx using relative
+                    // /v1/api URLs, so no backend URL needs to be baked in at build time.
+                    sh """
+                    docker build --no-cache -t ${ECR_FRONTEND_REPOSITORY}:${env.IMAGE_TAG} ./front-end-redbus
+                    docker push ${ECR_FRONTEND_REPOSITORY}:${env.IMAGE_TAG}
+                    """
                 }
             }
         }
@@ -109,17 +73,16 @@ pipeline {
         stage('Deploy to EKS') {
             steps {
                 script {
+                    sh 'kubectl apply -f kubernetes/secrets.yaml'
+                    sh 'kubectl apply -f kubernetes/backend-service.yaml'
 
-                    sh '''
-                    # Replace repository placeholders
-                    sed -i 's|\\\${ECR_BACKEND_REPOSITORY}|${ECR_BACKEND_REPOSITORY}|g' kubernetes/backend-deployment.yaml
-                    sed -i 's|\\\${ECR_FRONTEND_REPOSITORY}|${ECR_FRONTEND_REPOSITORY}|g' kubernetes/frontend-deployment.yaml
-
-                    # Replace IMAGE_TAG placeholder using the tag generated during build
-                    IMAGE_TAG=$(cat image_tag.txt)
-                    sed -i "s|\\\${IMAGE_TAG}|${IMAGE_TAG}|g" kubernetes/backend-deployment.yaml
-                    sed -i "s|\\\${IMAGE_TAG}|${IMAGE_TAG}|g" kubernetes/frontend-deployment.yaml
-                    '''
+                    // Substitute the ECR repo + image tag placeholders in the manifests.
+                    // Groovy interpolates the real values; \\\$ keeps the literal
+                    // ${...} text that sed matches in the YAML.
+                    sh """
+                    sed -i 's|\\\${ECR_BACKEND_REPOSITORY}|${ECR_BACKEND_REPOSITORY}|g; s|\\\${IMAGE_TAG}|${env.IMAGE_TAG}|g' kubernetes/backend-deployment.yaml
+                    sed -i 's|\\\${ECR_FRONTEND_REPOSITORY}|${ECR_FRONTEND_REPOSITORY}|g; s|\\\${IMAGE_TAG}|${env.IMAGE_TAG}|g' kubernetes/frontend-deployment.yaml
+                    """
 
                     sh 'kubectl apply -f kubernetes/backend-deployment.yaml'
                     sh 'kubectl apply -f kubernetes/frontend-deployment.yaml'
@@ -132,19 +95,20 @@ pipeline {
                 }
             }
         }
+
         stage('Deploy Monitoring') {
             steps {
                 script {
                     sh 'kubectl apply -f kubernetes/monitoring/namespace.yaml'
                     sh 'kubectl apply -f kubernetes/monitoring/prometheus-configmap.yaml'
-                    sh 'kubectl apply -f kubernetes/monitoring/prometheus-deployment.yaml'
                     sh 'kubectl apply -f kubernetes/monitoring/prometheus-rbac.yaml'
+                    sh 'kubectl apply -f kubernetes/monitoring/prometheus-deployment.yaml'
                     sh 'kubectl apply -f kubernetes/monitoring/prometheus-service.yaml'
                     sh 'kubectl apply -f kubernetes/monitoring/grafana-datasource-configmap.yaml'
                     sh 'kubectl apply -f kubernetes/monitoring/grafana-deployment.yaml'
                     sh 'kubectl apply -f kubernetes/monitoring/grafana-service.yaml'
-                    sh 'kubectl rollout status deployment/prometheus -n monitoring --timeout=180s || true'
-                    sh 'kubectl rollout status deployment/grafana -n monitoring --timeout=180s || true'
+                    sh 'kubectl rollout status deployment/prometheus-deployment -n monitoring --timeout=180s || true'
+                    sh 'kubectl rollout status deployment/grafana-deployment -n monitoring --timeout=180s || true'
                 }
             }
         }

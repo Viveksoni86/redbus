@@ -1,15 +1,23 @@
-version: "3"
-
 services:
   backend:
     build: ./back-end-redbus
-    ports:
-      - "5000:5000"
+    environment:
+      - PORT=5000
+      - HOST=0.0.0.0
     env_file:
       - ./back-end-redbus/config.env
+    ports:
+      - "5000:5000"
 
   frontend:
-    build: ./front-end-redbus
+    build:
+      context: ./front-end-redbus
+      args:
+        # Empty -> app uses relative /v1/api URLs proxied by nginx to backend.
+        REACT_APP_BACKEND_URL: ""
+    environment:
+      # nginx proxies /v1/api to this service name on the compose network.
+      - BACKEND_HOST=backend
     ports:
       - "3001:80"
     depends_on:
