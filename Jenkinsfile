@@ -1,6 +1,12 @@
 pipeline {
     agent any
 
+      options {
+        timestamps()
+        timeout(time: 60, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
+
     environment {
         AWS_ACCOUNT_ID = "740349584703"
         AWS_REGION     = "ap-south-1"
@@ -96,25 +102,25 @@ pipeline {
         }
 
         stage('Build & Push Frontend') {
-            steps {
-                script {
+    steps {
+        script {
 
-                   def backendUrl = readFile('backend_url.txt').trim()
+            def backendUrl = readFile('backend_url.txt').trim()
+            def imageTag = readFile('image_tag.txt').trim()
 
-                  sh """
-                        IMAGE_TAG=\$(cat image_tag.txt)
-                        
-                        docker build --no-cache \
-                        --build-arg REACT_APP_BACKEND_URL=${backendUrl} \
-                        -t ${ECR_FRONTEND_REPOSITORY}:\$IMAGE_TAG \
-                        ./front-end-redbus
-                        
-                        docker push ${ECR_FRONTEND_REPOSITORY}:\$IMAGE_TAG
-                        """
-                }
-            }
+            sh """
+            docker build --no-cache \
+            --build-arg REACT_APP_BACKEND_URL=${backendUrl} \
+            -t ${ECR_FRONTEND_REPOSITORY}:${imageTag} \
+            ./front-end-redbus
+
+            docker push ${ECR_FRONTEND_REPOSITORY}:${imageTag}
+            """
         }
+    }
+}
 
+        
         stage('Deploy to EKS') {
             steps {
                 script {
