@@ -1,19 +1,16 @@
 pipeline {
     agent any
 
-    options {
-        timestamps()
-        timeout(time: 60, unit: 'MINUTES')
-        disableConcurrentBuilds()
-    }
-
     environment {
         AWS_ACCOUNT_ID = "740349584703"
         AWS_REGION     = "ap-south-1"
-        CLUSTER_NAME   = "redbus-eks-cluster"
+
+        REACT_APP_BACKEND_URL = "http://a7227424e39ff455e9463c6260275f0c-2032827606.ap-south-1.elb.amazonaws.com:5000"
 
         ECR_BACKEND_REPOSITORY  = "740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend"
         ECR_FRONTEND_REPOSITORY = "740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend"
+
+        CLUSTER_NAME = "redbus-eks-cluster"
     }
 
     stages {
@@ -50,7 +47,7 @@ pipeline {
         stage('Deploy Secrets & Backend Service') {
             steps {
                 script {
-                    sh 'kubectl apply -f kubernetes/secrets.yaml || true'
+                    sh 'kubectl apply -f kubernetes/secrets.yaml'
                     sh 'kubectl apply -f kubernetes/backend-service.yaml'
 
                     sh '''
@@ -80,16 +77,12 @@ pipeline {
         stage('Build & Push Backend') {
             steps {
                 script {
-
                     sh '''
-                    GIT_SHA=$(git rev-parse --short HEAD)
+                    GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "no-git")
                     IMAGE_TAG="${GIT_SHA}-${BUILD_NUMBER}-$(date +%s)"
                     echo $IMAGE_TAG > image_tag.txt
 
-                    docker build --no-cache --progress=plain \
-                    -t ${ECR_BACKEND_REPOSITORY}:$IMAGE_TAG \
-                    ./back-end-redbus
-
+                    docker build --no-cache -t ${ECR_BACKEND_REPOSITORY}:$IMAGE_TAG ./back-end-redbus
                     docker push ${ECR_BACKEND_REPOSITORY}:$IMAGE_TAG
                     '''
                 }
@@ -99,17 +92,17 @@ pipeline {
         stage('Build & Push Frontend') {
             steps {
                 script {
-
-                    def backendUrl = sh(script: "cat backend_url.txt", returnStdout: true).trim()
-                    def imageTag = sh(script: "cat image_tag.txt", returnStdout: true).trim()
+                    def backendUrl = readFile('backend_url.txt').trim()
 
                     sh """
-                    docker build --no-cache --progress=plain \
+                    IMAGE_TAG=\$(cat image_tag.txt)
+
+                    docker build --no-cache \
                     --build-arg REACT_APP_BACKEND_URL=${backendUrl} \
-                    -t ${ECR_FRONTEND_REPOSITORY}:${imageTag} \
+                    -t ${ECR_FRONTEND_REPOSITORY}:\$IMAGE_TAG \
                     ./front-end-redbus
 
-                    docker push ${ECR_FRONTEND_REPOSITORY}:${imageTag}
+                    docker push ${ECR_FRONTEND_REPOSITORY}:\$IMAGE_TAG
                     """
                 }
             }
@@ -118,16 +111,15 @@ pipeline {
         stage('Deploy to EKS') {
             steps {
                 script {
+                    sh '''
+                    IMAGE_TAG=$(cat image_tag.txt)
 
-                    def imageTag = sh(script: "cat image_tag.txt", returnStdout: true).trim()
+                    sed -i "s|\\${ECR_BACKEND_REPOSITORY}|${ECR_BACKEND_REPOSITORY}|g" kubernetes/backend-deployment.yaml
+                    sed -i "s|\\${ECR_FRONTEND_REPOSITORY}|${ECR_FRONTEND_REPOSITORY}|g" kubernetes/frontend-deployment.yaml
 
-                    sh """
-                    sed -i 's|\\${ECR_BACKEND_REPOSITORY}|${ECR_BACKEND_REPOSITORY}|g' kubernetes/backend-deployment.yaml
-                    sed -i 's|\\${ECR_FRONTEND_REPOSITORY}|${ECR_FRONTEND_REPOSITORY}|g' kubernetes/frontend-deployment.yaml
-
-                    sed -i 's|\\${IMAGE_TAG}|${imageTag}|g' kubernetes/backend-deployment.yaml
-                    sed -i 's|\\${IMAGE_TAG}|${imageTag}|g' kubernetes/frontend-deployment.yaml
-                    """
+                    sed -i "s|\\${IMAGE_TAG}|${IMAGE_TAG}|g" kubernetes/backend-deployment.yaml
+                    sed -i "s|\\${IMAGE_TAG}|${IMAGE_TAG}|g" kubernetes/frontend-deployment.yaml
+                    '''
 
                     sh 'kubectl apply -f kubernetes/backend-deployment.yaml'
                     sh 'kubectl apply -f kubernetes/frontend-deployment.yaml'
@@ -135,8 +127,6 @@ pipeline {
 
                     sh 'kubectl rollout status deployment/redbus-backend --timeout=180s'
                     sh 'kubectl rollout status deployment/redbus-frontend --timeout=180s'
-
-                    sh 'kubectl get svc'
                 }
             }
         }
@@ -147,14 +137,9 @@ pipeline {
                     sh 'kubectl apply -f kubernetes/monitoring/namespace.yaml'
                     sh 'kubectl apply -f kubernetes/monitoring/prometheus-configmap.yaml'
                     sh 'kubectl apply -f kubernetes/monitoring/prometheus-deployment.yaml'
-                    sh 'kubectl apply -f kubernetes/monitoring/prometheus-rbac.yaml'
                     sh 'kubectl apply -f kubernetes/monitoring/prometheus-service.yaml'
-                    sh 'kubectl apply -f kubernetes/monitoring/grafana-datasource-configmap.yaml'
                     sh 'kubectl apply -f kubernetes/monitoring/grafana-deployment.yaml'
                     sh 'kubectl apply -f kubernetes/monitoring/grafana-service.yaml'
-
-                    sh 'kubectl rollout status deployment/prometheus -n monitoring --timeout=180s || true'
-                    sh 'kubectl rollout status deployment/grafana -n monitoring --timeout=180s || true'
                 }
             }
         }
@@ -162,21 +147,18 @@ pipeline {
 
     post {
         success {
-            echo "Deployment Successful 🚀"
+            echo "Deployment Successful"
 
             sh '''
             FRONTEND_DNS=$(kubectl get svc redbus-frontend \
             -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
 
-            echo "====================================="
-            echo "APP LIVE:"
-            echo "http://$FRONTEND_DNS"
-            echo "====================================="
+            echo "APP LIVE: http://$FRONTEND_DNS"
             '''
         }
 
         failure {
-            echo "Pipeline Failed ❌"
+            echo "Pipeline Failed"
         }
     }
 }
