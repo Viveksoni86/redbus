@@ -4,6 +4,7 @@ pipeline {
     environment {
         AWS_ACCOUNT_ID = "740349584703"
         AWS_REGION     = "ap-south-1"
+        REACT_APP_BACKEND_URL = "http://a7227424e39ff455e9463c6260275f0c-2032827606.ap-south-1.elb.amazonaws.com:5000"
 
         ECR_BACKEND_REPOSITORY  = "740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-backend"
         ECR_FRONTEND_REPOSITORY = "740349584703.dkr.ecr.ap-south-1.amazonaws.com/redbus-frontend"
