@@ -96,13 +96,18 @@ pipeline {
             steps {
                 script {
 
-                    def backendUrl = readFile('backend_url.txt').trim()
+                   def backendUrl = readFile('backend_url.txt').trim()
 
-                    sh '''
-                    IMAGE_TAG=$(cat image_tag.txt)
-                    docker build --no-cache --build-arg REACT_APP_BACKEND_URL=${backendUrl} -t ${ECR_FRONTEND_REPOSITORY}:$IMAGE_TAG ./front-end-redbus
-                    docker push ${ECR_FRONTEND_REPOSITORY}:$IMAGE_TAG
-                    '''
+                  sh """
+                        IMAGE_TAG=\$(cat image_tag.txt)
+                        
+                        docker build --no-cache \
+                        --build-arg REACT_APP_BACKEND_URL=${backendUrl} \
+                        -t ${ECR_FRONTEND_REPOSITORY}:\$IMAGE_TAG \
+                        ./front-end-redbus
+                        
+                        docker push ${ECR_FRONTEND_REPOSITORY}:\$IMAGE_TAG
+                        """
                 }
             }
         }
