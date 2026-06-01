@@ -13,12 +13,15 @@ pipeline {
     }
 
     stages {
-
-        stage('Clean Workspace') {
-            steps {
-                deleteDir()
-            }
-        }
+            
+            stage('Checkout') {
+    steps {
+        deleteDir()
+        git branch: 'main', url: 'https://github.com/Viveksoni86/redbus.git'
+    }
+}
+            
+        
 
         stage('Initialize & Authenticate') {
             steps {
